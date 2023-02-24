@@ -157,6 +157,10 @@ impl Handler {
                     }
 
                     match buffer.as_slice() {
+                        PROTOCOL_INIT_REQ => {
+                            debug!("Received an initialization request");
+                        }
+
                         PROTOCOL_CONN_REQ => {
                             debug!("Received a connection request");
                         }
@@ -173,13 +177,11 @@ impl Handler {
                             debug!("Received an unknown request: `{:?}`", unknown);
                         }
                     };
-
-                    Ok(())
                 }
 
                 Err(e) => {
                     self.stream.write_all(format!("{}", e).as_bytes())?;
-                    Err(e)
+                    return Err(e);
                 }
             }
         }
@@ -255,7 +257,7 @@ impl Node {
             debug!("Attempting to connect to {}", node);
             // Using a pull-back mechanism for repeatedly invoking the callback until failing for
             // the 20th time. This function is blocking.
-            with_pullback::<20, 2>(
+            with_pullback::<20, 2, String>(
                 || {
                     // Connecting to the remote node and checking whether there are no issues with the
                     // incoming stream.
@@ -311,10 +313,12 @@ impl Node {
 /// The function is blocking, since it _may_ call [std::thread::sleep] for more than 1 time under the
 /// hood. _**May**_ call, because the mechanism will automatically stop after the first successful
 /// attempt.
-fn with_pullback<const RETRIES: usize, const SLEEP: usize>(
-    callback: impl FnOnce() -> Result<(), String> + Copy,
+fn with_pullback<const RETRIES: usize, const SLEEP: usize, T>(
+    callback: impl FnOnce() -> Result<(), T> + Copy,
     fallback: impl FnOnce(),
-) {
+) where
+    T: std::fmt::Debug,
+{
     let mut iterations = 0; // keeping track of current number of retries.
     while iterations < RETRIES {
         let duration = std::time::Duration::from_secs((iterations * SLEEP) as u64);
