@@ -1,0 +1,9 @@
+[workspace]
+members = ["crates/*"]
+exclude = ["target"]
+
+[workspace.dependencies]
+log = "0.4.17"
+serde_json = "1.0"
+multiverse9core = { path = "crates/multiverse9core" }
+serde = { version = "1.0.152", features = ["derive"] }
