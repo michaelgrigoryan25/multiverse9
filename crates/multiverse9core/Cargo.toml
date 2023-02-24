@@ -9,4 +9,3 @@ edition = "2021"
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-spinners = "4.1.0"
