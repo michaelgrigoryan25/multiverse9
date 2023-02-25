@@ -2,17 +2,26 @@ use log::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::prelude::*;
+use std::sync::Arc;
 
+/// Default address when binding the [std::net::TcpListener] locally.
 const DEFAULT_HOST_ADDRESS: &str = "127.0.0.1:0";
+/// Default storage path.
 const DEFAULT_DATA_PATHNAME: &str = "multiverse9";
+/// Default instance name prefix.
 const DEFAULT_INSTANCE_PREFIX: &str = "multiverse9";
+/// Default settings file name.
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 
-// const PROTO_CONN_REQ: &[u8] = &[0o0001];
-const PROTO_SYNC_REQ: &[u8] = &[0o0010];
-// const PROTO_INIT_RES: &[u8] = &[0o0100];
-// const PROTO_AGGR_REQ: &[u8] = &[0o0002];
-// const PROTO_META_REQ: &[u8] = &[0o0003];
+/// This protocol code indicates that a remote node wants to initiate synchronization with current
+/// node.
+const PROTO_SYNC_REQ: &[u8] = &[0o000001];
+/// This protocol code indicates that remote synchronization is available for remote nodes which want
+/// to connect to current node.
+const PROTO_SYNC_OK: &[u8] = &[0x10, 0x10];
+/// This protocol code indicates that remote synchronization is not available for remote nodes
+/// which want to connect to current node.
+const PROTO_SYNC_NA: &[u8] = &[0x10, 0x11];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
@@ -61,8 +70,6 @@ impl Settings {
             mv_nodes: vec![],
             mv_open_metadata: true,
             mv_open_interactions: true,
-            // We don't have to define the version of the node manually, since it is done
-            // at build-time by cargo.
             mv_version: env!("CARGO_PKG_VERSION").into(),
             mv_addr: DEFAULT_HOST_ADDRESS.parse().unwrap(),
         })
@@ -134,13 +141,15 @@ impl Hasher {
 }
 
 struct Handler {
+    /// Keeping an immutable reference to the node data.
+    mv_node: Arc<Node>,
     /// The streams will be moved and owned by the [Handler] for maximum isolation.
     stream: std::net::TcpStream,
 }
 
 impl Handler {
-    fn new(stream: std::net::TcpStream) -> Self {
-        Self { stream }
+    fn new(stream: std::net::TcpStream, mv_node: Arc<Node>) -> Self {
+        Self { stream, mv_node }
     }
 
     /// This is the main TCP request handler which will be spawned from [Node::start].
@@ -149,14 +158,18 @@ impl Handler {
     ///
     /// This function is blocking, as it should never return, unless the TCP stream is disconnected
     /// or there is an error coming from this function.
-    fn tcp(self, mv_settings: &Settings) -> std::io::Result<()> {
+    fn tcp(self) -> std::io::Result<()> {
         let buffer = read_tcp_stream(&self.stream)?;
         match buffer.as_slice() {
             PROTO_SYNC_REQ => {
-                if mv_settings.mv_open_interactions {
-                    write_tcp_stream(&self.stream, &[0x10, 0x10])?;
+                if self.mv_node.mv_settings.mv_open_interactions {
+                    // Add remote node to the "mv_remotes" slice of the configuration. As of right
+                    // now, this is impossible, since we are using an Arc'ed pointer, which points
+                    // to Node and all its configuration.
+
+                    write_tcp_stream(&self.stream, PROTO_INTERACT_OK)?;
                 } else {
-                    write_tcp_stream(&self.stream, &[0x10, 0x11])?;
+                    write_tcp_stream(&self.stream, PROTO_INTERACT_NO)?;
                 }
             }
 
@@ -188,23 +201,23 @@ impl Node {
         let listener = std::net::TcpListener::bind(self.mv_settings.mv_addr)?;
         info!("TcpListener bound: {}", listener.local_addr()?);
 
-        let self_p = self.clone();
+        let ptr = self.clone();
         // Spawning a separate thread for handling the syncing process of nodes.
-        std::thread::spawn(move || self_p.sync());
+        std::thread::spawn(move || ptr.sync());
         debug!("Sync daemon has been spawned");
 
         for stream in listener.incoming() {
             let stream = stream?; // Acquiring the connection
             debug!("New connection from {}", stream.peer_addr()?);
 
-            let self_p = self.clone();
+            let ptr = self.clone();
             // Spawning a separate thread for each incoming connection. Besides a thread,
             // there will also be an instance of [Handler], which will be the main function
             // the thread tcp executes.
             std::thread::spawn(move || {
                 // Only handling the error, since there is no needed data coming from an Ok(())
                 // result.
-                if let Err(e) = Handler::new(stream).tcp(&self_p.mv_settings) {
+                if let Err(e) = Handler::new(stream, ptr).tcp() {
                     error!("{}", e);
                 }
             });
@@ -257,12 +270,12 @@ impl Node {
                     if let Ok(stream) = std::net::TcpStream::connect(node) {
                         write_tcp_stream(&stream, PROTO_SYNC_REQ).map_err(string_err)?;
                         let reply = read_tcp_stream(&stream).map_err(string_err)?;
-                        match reply.as_slice() {
-                            &[0x10, 0x10] => {
+                        match *reply.as_slice() {
+                            [0x10, 0x10] => {
                                 debug!("Full access granted during sync. Adding node to acknowledged nodes");
                             }
 
-                            &[0x10, 0x11] => {
+                            [0x10, 0x11] => {
                                 debug!("Partial access granted during sync.");
                             }
 
@@ -336,7 +349,7 @@ fn with_pullback<const RETRIES: usize, const SLEEP: usize, T>(
 }
 
 fn write_tcp_stream(mut stream: &std::net::TcpStream, buffer: &[u8]) -> std::io::Result<()> {
-    stream.write_all(&buffer)?;
+    stream.write_all(buffer)?;
     stream.flush()
 }
 
