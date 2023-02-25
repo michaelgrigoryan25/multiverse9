@@ -9,6 +9,10 @@ struct Args {
     #[arg(short, long)]
     debug: bool,
 
+    /// Enable profiling output
+    #[arg(short, long)]
+    profile: bool,
+
     #[command(subcommand)]
     action: Action,
 }
@@ -55,6 +59,15 @@ fn main() -> ExitCode {
         eprintln!("error: logger failed to start. reason: {:?}", e);
         return ExitCode::FAILURE;
     }
+
+    // if args.profile {
+    //     std::thread::spawn(|| loop {
+    //         let guard = Some(pprof::ProfilerGuard::new(1000).unwrap());
+    //         let report = format!("{:?}", guard.unwrap().report().build().unwrap());
+    //         std::fs::write("__profiler_report", report).unwrap();
+    //         std::thread::sleep(std::time::Duration::from_secs(10));
+    //     });
+    // }
 
     args.action.execute();
     ExitCode::SUCCESS

@@ -8,11 +8,11 @@ const DEFAULT_DATA_PATHNAME: &str = "multiverse9";
 const DEFAULT_INSTANCE_PREFIX: &str = "multiverse9";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 
-const PROTO_CONN_REQ: &[u8] = &[0o0001];
+// const PROTO_CONN_REQ: &[u8] = &[0o0001];
 const PROTO_SYNC_REQ: &[u8] = &[0o0010];
-const PROTO_INIT_RES: &[u8] = &[0o0100];
-const PROTO_AGGR_REQ: &[u8] = &[0o0002];
-const PROTO_META_REQ: &[u8] = &[0o0003];
+// const PROTO_INIT_RES: &[u8] = &[0o0100];
+// const PROTO_AGGR_REQ: &[u8] = &[0o0002];
+// const PROTO_META_REQ: &[u8] = &[0o0003];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
@@ -149,19 +149,21 @@ impl Handler {
     ///
     /// This function is blocking, as it should never return, unless the TCP stream is disconnected
     /// or there is an error coming from this function.
-    fn tcp(mut self) -> std::io::Result<()> {
-        loop {
-            debug!("Awaiting a new request...");
-            let buffer = read_tcp_stream(&self.stream)?;
-            debug!("Received buffer: {:?}", buffer);
-            match buffer.as_slice() {
-                PROTO_SYNC_REQ => {
-                    debug!("This is a sync request");
+    fn tcp(self, mv_settings: &Settings) -> std::io::Result<()> {
+        let buffer = read_tcp_stream(&self.stream)?;
+        match buffer.as_slice() {
+            PROTO_SYNC_REQ => {
+                if mv_settings.mv_open_interactions {
+                    write_tcp_stream(&self.stream, &[0x10, 0x10])?;
+                } else {
+                    write_tcp_stream(&self.stream, &[0x10, 0x11])?;
                 }
-
-                _ => {}
             }
+
+            _ => {}
         }
+
+        Ok(())
     }
 }
 
@@ -186,20 +188,23 @@ impl Node {
         let listener = std::net::TcpListener::bind(self.mv_settings.mv_addr)?;
         info!("TcpListener bound: {}", listener.local_addr()?);
 
+        let self_p = self.clone();
         // Spawning a separate thread for handling the syncing process of nodes.
-        std::thread::spawn(move || self.sync());
+        std::thread::spawn(move || self_p.sync());
         debug!("Sync daemon has been spawned");
 
         for stream in listener.incoming() {
             let stream = stream?; // Acquiring the connection
-            debug!("New stream connection from {}", stream.peer_addr()?);
+            debug!("New connection from {}", stream.peer_addr()?);
+
+            let self_p = self.clone();
             // Spawning a separate thread for each incoming connection. Besides a thread,
             // there will also be an instance of [Handler], which will be the main function
             // the thread tcp executes.
             std::thread::spawn(move || {
                 // Only handling the error, since there is no needed data coming from an Ok(())
                 // result.
-                if let Err(e) = Handler::new(stream).tcp() {
+                if let Err(e) = Handler::new(stream).tcp(&self_p.mv_settings) {
                     error!("{}", e);
                 }
             });
@@ -219,14 +224,18 @@ impl Node {
     /// - Sending connection requests to the remote nodes. (experimental)
     /// - Handling incoming node connections and adding them to the configuration if allowed.
     /// (experimental)
-    fn sync(&self) {
+    fn sync(&self) -> std::io::Result<()> {
+        fn string_err<T: std::fmt::Debug>(e: T) -> String {
+            format!("{:?}", e)
+        }
+
         if self.mv_settings.mv_nodes.is_empty() {
             info!("Syncing skipped since there are no acknowledged remote nodes attached");
             if self.mv_settings.mv_open_interactions {
                 info!("Syncing will re-initiate once any remote connection is established with the host");
             }
 
-            return;
+            return Ok(());
         }
 
         info!(
@@ -238,17 +247,28 @@ impl Node {
         // Iterating through all acknowledged nodes specified in the configuration file and sending
         // a CONN request to their nodes.
         for node in &self.mv_settings.mv_nodes {
-            debug!("Attempting to connect to {}", node);
+            info!("Attempting to connect to {}", node);
             // Using a pull-back mechanism for repeatedly invoking the callback until failing for
             // the 20th time. This function is blocking.
             with_pullback::<20, 2, String>(
                 || {
                     // Connecting to the remote node and checking whether there are no issues with the
                     // incoming stream.
-                    if let Ok(mut stream) = std::net::TcpStream::connect(node) {
-                        write_tcp_stream(&stream, PROTO_SYNC_REQ).unwrap();
-                        let reply = read_tcp_stream(&stream).unwrap();
-                        debug!("Sync reply: {:?}", reply);
+                    if let Ok(stream) = std::net::TcpStream::connect(node) {
+                        write_tcp_stream(&stream, PROTO_SYNC_REQ).map_err(string_err)?;
+                        let reply = read_tcp_stream(&stream).map_err(string_err)?;
+                        match reply.as_slice() {
+                            &[0x10, 0x10] => {
+                                debug!("Full access granted during sync. Adding node to acknowledged nodes");
+                            }
+
+                            &[0x10, 0x11] => {
+                                debug!("Partial access granted during sync.");
+                            }
+
+                            _ => (),
+                        };
+
                         Ok(())
                     } else {
                         Err(format!("Could not to connect to `{:?}`", &node))
@@ -275,6 +295,7 @@ impl Node {
         }
 
         info!("Node is now in sync");
+        Ok(())
     }
 }
 
@@ -297,96 +318,43 @@ fn with_pullback<const RETRIES: usize, const SLEEP: usize, T>(
     let mut iterations = 0; // keeping track of current number of retries.
     while iterations < RETRIES {
         let duration = std::time::Duration::from_secs((iterations * SLEEP) as u64);
-        debug!("Sleeping for {:?}...", duration);
         std::thread::sleep(duration);
 
         if let Err(e) = callback() {
             error!("{:?}", e);
             iterations += 1;
+            debug!(target: "with_pullback", "Sleeping for {:?}...", duration);
             continue;
+        } else {
+            debug!("Callback execution finished successfully. Stoping the pull-back");
+            return;
         }
-
-        debug!("Callback execution finished successfully. Stoping the pull-back");
-        break;
     }
 
     debug!("Pull-back failed after maximum number of tries. Executing the fallback function");
     fallback();
 }
 
-/// Gets the size of the packet from the header, defined in the beginning
-/// of the request, as defined by the protocol.
-fn packet_size(mut stream: &std::net::TcpStream) -> std::io::Result<usize> {
-    use std::io;
-
-    // The usize string will include 32 digits of numbers at its maximum. We parse it as a
-    // usize for maximum flexibility.
-    let mut header = [0u8; 32];
-    stream.read_exact(&mut header)?;
-    let header = String::from_utf8_lossy(&header);
-    let size = header
-        .trim_end_matches('\0')
-        .parse::<usize>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid header format"))?;
-    debug!("The packet size is {}", size);
-
-    Ok(size)
-}
-
-fn write_tcp_stream(mut stream: &std::net::TcpStream, payload: &[u8]) -> std::io::Result<()> {
-    let size_be = payload.len().to_be_bytes();
-    // This part is a little tricky. We first want to allocate space for storing the header of
-    // the TCP request. Since the header is going to be an encoded big-endian slice, we will need
-    // to add it into account. Now, we are at the following part of the request:
-    //
-    // -------------------------------------------------------------
-    // 0x123456\0payload information
-    // |----|-------------------------------------------------------
-    // \____/
-    //  |-> [ 0x12, 0x34, 0x56 ]
-    //
-    // Basically, we now have space for storing the actual number which keeps track of the length.
-    // Now, we need to add one more slot for keeping the NULL terminator, which is represented as
-    // `[0]` in memory:
-    //
-    // -------------------------------------------------------------
-    // 123456\0payload information
-    // -----|-|-----------------------------------------------------
-    //      \_/
-    //       |-> [0] We are using ascii representation for a terminator here, which is is OK, since
-    //               the number is represented in big-endian and has a length of 8 bytes at most.
-    //               This is documented at https://doc.rust-lang.org/std/primitive.usize.html#method.to_be_bytes
-    //
-    //
-    // And finally, we are allocating space for the actual payload, by getting its
-    // length:
-    //
-    // -------------------------------------------------------------
-    // 123456\0payload information
-    // -------|------------------|----------------------------------
-    //        \__________________/
-    //                  |-> [...]
-    //
-    let mut buffer = Vec::with_capacity(size_be.len() + 1 + payload.len());
-    buffer.extend(size_be);
-    buffer.extend(&[0]);
-    buffer.extend(payload);
-    debug!(
-        "Planned a new TCP request. Length is {}: `{:?}`",
-        buffer.len(),
-        buffer
-    );
-
+fn write_tcp_stream(mut stream: &std::net::TcpStream, buffer: &[u8]) -> std::io::Result<()> {
     stream.write_all(&buffer)?;
-    debug!("TCP request executed successfully");
-    Ok(())
+    stream.flush()
 }
 
 /// This function helps us to avoid writing boilerplate code when executing TCP read requests.
-/// Under the hood, this function consumes the [packet_size] function.
 fn read_tcp_stream(mut stream: &std::net::TcpStream) -> std::io::Result<Vec<u8>> {
-    let size = packet_size(stream)?;
-    let mut buffer: Vec<u8> = vec![0; size];
-    stream.read(&mut buffer)?;
+    const READ_BYTES_CAP: usize = 8;
+
+    let mut buffer: Vec<u8> = vec![];
+    let mut rx_bytes: [u8; READ_BYTES_CAP] = Default::default();
+    loop {
+        let bytes_read = stream.read(&mut rx_bytes)?;
+        buffer.extend_from_slice(&rx_bytes[..bytes_read]);
+        if bytes_read < READ_BYTES_CAP {
+            break;
+        }
+    }
+
+    debug!("Read bytes: {:?}", buffer);
+    stream.flush()?;
     Ok(buffer)
 }
