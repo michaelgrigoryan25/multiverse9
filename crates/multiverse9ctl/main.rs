@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use multiverse9core::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -10,8 +11,8 @@ struct Args {
     debug: bool,
 
     /// Enable profiling output
-    #[arg(short, long)]
-    profile: bool,
+    // #[arg(short, long)]
+    // profile: bool,
 
     #[command(subcommand)]
     action: Action,
@@ -36,16 +37,14 @@ impl Action {
     pub fn execute(&self) {
         match self {
             Self::Setup { path } => {
-                let settings = multiverse9core::Settings::new(path.to_owned()).unwrap();
+                let settings = Settings::new(path.to_owned()).unwrap();
                 settings.generate().unwrap();
             }
 
             Self::Run { settings } => {
                 let settings = std::path::PathBuf::from(format!("{}/settings.json", settings));
-                let settings =
-                    multiverse9core::Settings::try_from(settings).expect("Could not read settings");
-                let node = multiverse9core::Node::new(settings);
-                std::sync::Arc::new(node)
+                let settings = Settings::try_from(settings).expect("Could not read settings");
+                std::sync::Arc::new(Node::new(settings))
                     .start()
                     .expect("Could not start the node");
             }
