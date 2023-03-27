@@ -1,7 +1,7 @@
+use log::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::prelude::*;
-use log::*;
 
 /// Default address when binding the [std::net::TcpListener] locally.
 const DEFAULT_HOST_ADDRESS: &str = "127.0.0.1:0";
@@ -67,7 +67,7 @@ impl Settings {
     /// Generates a settings file from the provided [Settings] struct and
     /// persists it in the filesystem at the path provided when initiating
     /// the struct.
-    pub fn generate(self) -> Result<(), SettingsError> {
+    pub fn persist(&self) -> Result<(), SettingsError> {
         std::fs::create_dir_all(&self.mv_data).map_err(SettingsError::IoError)?;
         debug!("Created a data directory at {:?}", &self.mv_data);
 

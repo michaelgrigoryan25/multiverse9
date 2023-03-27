@@ -29,12 +29,10 @@ impl Hasher {
 ///
 /// The function is blocking, since it _may_ call [std::thread::sleep] for more than 1 time under the
 /// hood. The function will automatically break after the **first** successful attempt.
-pub(crate) fn attempt<const RETRIES: usize, const SLEEP: usize, T>(
+pub(crate) fn attempt<const RETRIES: usize, const SLEEP: usize, T: std::fmt::Debug>(
     callback: impl FnOnce() -> Result<(), T> + Copy,
     fallback: impl FnOnce(),
-) where
-    T: std::fmt::Debug,
-{
+) {
     use std::time::Duration;
 
     let mut attempts = 0;

@@ -38,7 +38,7 @@ impl Action {
         match self {
             Self::Setup { path } => {
                 let settings = Settings::new(path.to_owned()).unwrap();
-                settings.generate().unwrap();
+                settings.persist().unwrap();
             }
 
             Self::Run { settings } => {

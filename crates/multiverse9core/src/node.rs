@@ -21,32 +21,44 @@ impl Node {
     /// threads. The threads, as of right now do not have the option of changing the settings
     /// internally.
     pub fn start(self: Arc<Self>) -> std::io::Result<()> {
+        let mut threads = vec![];
         // Binding to the specified address. This is 127.0.0.1:0 by default.
         let listener = std::net::TcpListener::bind(self.mv_settings.mv_addr)?;
         info!("TcpListener bound: {}", listener.local_addr()?);
 
-        let self_rc = self.clone();
-        std::thread::spawn(move || {
+        {
+            let arc = self.clone();
+            threads.push(std::thread::spawn(move || {
+                if let Err(e) = arc.sync() {
+                    error!("Error occurred during sync: {:?}", e);
+                }
+            }));
+
             debug!("Sync thread has been spawned...");
-            self_rc.sync()
-        });
+        }
 
         for stream in listener.incoming() {
             let stream = stream?;
             let peer_addr = stream.peer_addr()?;
             debug!("New connection from {}", peer_addr);
 
-            let self_rc = self.clone();
+            let arc = self.clone();
             // Spawning a separate thread for each incoming connection. Besides a thread,
             // there will also be an instance of [Handler], which will be the main function
             // the thread tcp executes.
-            std::thread::spawn(move || {
+            threads.push(std::thread::spawn(move || {
                 // Only handling the error, since there is no needed data coming from an Ok(())
                 // result.
-                if let Err(e) = Handler::new(stream, self_rc).tcp() {
+                if let Err(e) = Handler::new(stream, arc).tcp() {
                     error!("Stream error {}: {}", peer_addr, e);
                 }
-            });
+            }));
+        }
+
+        for thread in threads {
+            if let Err(e) = thread.join() {
+                error!("Error while joining the thread: {:?}", e);
+            }
         }
 
         Ok(())
@@ -58,9 +70,9 @@ impl Node {
         }
 
         if self.mv_settings.mv_nodes.is_empty() {
-            info!("Syncing skipped, since there are no acknowledged remote nodes attached");
+            info!("Syncing skipped. No acknowledged remote nodes found");
             if self.mv_settings.mv_open_interactions {
-                info!("Syncing will reinstantiate once any remote connection is established with the host");
+                info!("Syncing will reinstantiate once a remote connection is established with current node");
             }
 
             return Ok(());
