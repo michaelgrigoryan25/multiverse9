@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Node {
-    pub mv_settings: Settings,
+    pub settings: Settings,
 }
 
 impl Node {
     /// Creates a new node from the specified [Settings] struct instance. [Settings] must be
     /// initialized separately.
-    pub fn new(mv_settings: Settings) -> Self {
-        Self { mv_settings }
+    pub fn new(settings: Settings) -> Self {
+        Self { settings }
     }
 
     /// Binds a [std::net::TcpListener] to the address specified by the [Settings] struct.
@@ -22,7 +22,7 @@ impl Node {
         use crate::protocol::Handler;
         use std::net::TcpListener;
 
-        let listener = TcpListener::bind(self.mv_settings.mv_addr)?;
+        let listener = TcpListener::bind(self.settings.addr)?;
         info!("TcpListener bound at {}", listener.local_addr()?);
 
         for stream in listener.incoming() {

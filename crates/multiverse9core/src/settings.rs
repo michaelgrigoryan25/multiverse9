@@ -15,23 +15,23 @@ const DEFAULT_DATA_PATHNAME: &str = DEFAULT_INSTANCE_PREFIX;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
     /// Human-readable identifier of current instance.
-    pub mv_name: String,
+    pub name: String,
     /// The path for storing information, such as posts and metadata.
-    pub mv_data: String,
+    pub data: String,
     /// The version of current node.
-    pub mv_version: String,
+    pub version: String,
     /// Internal IP address of the node.
-    pub mv_addr: std::net::SocketAddr,
+    pub addr: std::net::SocketAddr,
     /// Whether the instance allows anyone to request for its metadata.
-    pub mv_open_metadata: bool,
+    pub open_metadata: bool,
     /// Whether the instance is open for any kind of interaction from any
     /// remote instance. This essentially grants unrestricted access for
     /// posting, interacting, etc. on current instance for remote nodes.
-    pub mv_open_interactions: bool,
+    pub open_interactions: bool,
     /// Acknowledged list of nodes which are allowed to have any type of
     /// interaction with current node. Essentially, this is a list of the
     /// nodes which are directly connected with current node.
-    pub mv_nodes: Vec<std::net::SocketAddr>,
+    pub nodes: Vec<std::net::SocketAddr>,
 }
 
 impl Settings {
@@ -54,13 +54,13 @@ impl Settings {
             .to_string();
 
         Ok(Self {
-            mv_data,
-            mv_name,
-            mv_nodes: vec![],
-            mv_open_metadata: true,
-            mv_open_interactions: true,
-            mv_version: env!("CARGO_PKG_VERSION").into(),
-            mv_addr: DEFAULT_HOST_ADDRESS.parse().unwrap(),
+            data: mv_data,
+            name: mv_name,
+            nodes: vec![],
+            open_metadata: true,
+            open_interactions: true,
+            version: env!("CARGO_PKG_VERSION").into(),
+            addr: DEFAULT_HOST_ADDRESS.parse().unwrap(),
         })
     }
 
@@ -68,15 +68,15 @@ impl Settings {
     /// persists it in the filesystem at the path provided when initiating
     /// the struct.
     pub fn persist(&self) -> Result<(), SettingsError> {
-        std::fs::create_dir_all(&self.mv_data).map_err(SettingsError::IoError)?;
-        debug!("Created a data directory at {:?}", &self.mv_data);
+        std::fs::create_dir_all(&self.data).map_err(SettingsError::IoError)?;
+        debug!("Created a data directory at {:?}", &self.data);
 
         let mut settings = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .append(false)
-            .open(format!("{}/{}", self.mv_data, DEFAULT_SETTINGS_FILENAME))
+            .open(format!("{}/{}", self.data, DEFAULT_SETTINGS_FILENAME))
             .map_err(SettingsError::IoError)?;
 
         settings
