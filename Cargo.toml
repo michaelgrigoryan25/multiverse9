@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*"]
-exclude = ["target"]
+exclude = ["target", "instances"]
 
 [workspace.dependencies]
 log = "0.4.17"

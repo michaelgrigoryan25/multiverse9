@@ -5,12 +5,12 @@ use std::io::prelude::*;
 
 /// Default address when binding the [std::net::TcpListener] locally.
 const DEFAULT_HOST_ADDRESS: &str = "127.0.0.1:0";
-/// Default storage path.
-const DEFAULT_DATA_PATHNAME: &str = "multiverse9";
 /// Default instance name prefix.
 const DEFAULT_INSTANCE_PREFIX: &str = "multiverse9";
 /// Default settings file name.
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
+/// Default storage path.
+const DEFAULT_DATA_PATHNAME: &str = DEFAULT_INSTANCE_PREFIX;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {

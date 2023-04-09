@@ -1,28 +1,19 @@
-use crate::node::Node;
-use log::*;
 use std::io::prelude::*;
-use std::sync::Arc;
+use std::net::TcpStream;
 
-/// This protocol code indicates that a remote node wants to initiate synchronization with current
-/// node.
-pub const PROTO_SYNC_REQ: &[u8] = &[0o000001];
-/// This protocol code indicates that remote synchronization is available for remote nodes which 
-/// want to connect to current node.
-pub const PROTO_SYNC_OK: &[u8] = &[0x10, 0x10];
-/// This protocol code indicates that remote synchronization is not available for remote nodes
-/// which want to connect to current node.
-pub const PROTO_SYNC_NA: &[u8] = &[0x10, 0x11];
+pub(crate) struct Handler(TcpStream);
 
-pub(crate) struct Handler {
-    /// Keeping an immutable reference to the node data.
-    mv_node: Arc<Node>,
-    /// The streams will be moved and owned by the [Handler] for maximum isolation.
-    stream: std::net::TcpStream,
+impl std::ops::Deref for Handler {
+    type Target = TcpStream;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Handler {
-    pub(crate) fn new(stream: std::net::TcpStream, mv_node: Arc<Node>) -> Self {
-        Self { stream, mv_node }
+    pub(crate) fn new(stream: TcpStream) -> Self {
+        Self(stream)
     }
 
     /// This is the main TCP request handler which will be spawned from [Node::start].
@@ -32,73 +23,28 @@ impl Handler {
     /// This function is blocking, as it should never return, unless the TCP stream is disconnected
     /// or there is an error coming from this function.
     pub(crate) fn tcp(&mut self) -> std::io::Result<()> {
-        let peer_addr = self.stream.peer_addr()?;
-        let buffer = self.read()?;
-        match buffer.as_slice() {
-            PROTO_SYNC_REQ => {
-                if self.mv_node.mv_settings.mv_open_interactions {
-                    // Add remote node to the "mv_remotes" slice of the configuration. As of right
-                    // now, this is impossible, since we are using an Arc'ed pointer, which points
-                    // to Node and all its configuration.
-                    debug!("Sync request from {} was accepted...", peer_addr);
-                    let mv_node = Arc::get_mut(&mut self.mv_node).unwrap();
-                    mv_node.mv_settings.mv_nodes.push(peer_addr);
-                    mv_node.mv_settings.persist().unwrap();
-                    self.write(PROTO_SYNC_OK)?;
-                } else {
-                    debug!("Sync request from {} was denied...", peer_addr);
-                    self.write(PROTO_SYNC_NA)?;
-                }
-            }
+        unimplemented!()
+    }
+}
 
-            _ => (),
+pub(crate) fn write(mut stream: &std::net::TcpStream, buf: &[u8]) -> std::io::Result<()> {
+    stream.write_all(buf)?;
+    stream.flush()
+}
+
+pub(crate) fn read(mut stream: &std::net::TcpStream) -> std::io::Result<Vec<u8>> {
+    const READ_BYTES_CAP: usize = 8;
+
+    let mut buffer: Vec<u8> = vec![];
+    let mut rx_bytes = [0u8; READ_BYTES_CAP];
+    loop {
+        let bytes_read = stream.read(&mut rx_bytes)?;
+        buffer.extend_from_slice(&rx_bytes[..bytes_read]);
+        if bytes_read < READ_BYTES_CAP {
+            break;
         }
-
-        Ok(())
     }
 
-    pub(crate) fn sync(self) -> std::io::Result<()> {
-        // Sending a sync request to the remote node
-        self.write(PROTO_SYNC_REQ)?;
-        // Blocking indefinitely and getting back the response
-        let reply = self.read()?;
-        match reply.as_slice() {
-            PROTO_SYNC_OK => {
-                debug!("Sync access granted. Node is now acknowledged");
-                unimplemented!();
-            }
-
-            PROTO_SYNC_NA => {
-                debug!("Partial sync access granted");
-                unimplemented!();
-            }
-
-            unknown => unimplemented!(
-                "Unknown cases are currently not handled. Got: {:?}",
-                unknown
-            ),
-        };
-    }
-
-    fn read(&self) -> std::io::Result<Vec<u8>> {
-        const READ_BYTES_CAP: usize = 8;
-
-        let mut buffer: Vec<u8> = vec![];
-        let mut rx_bytes = [0u8; READ_BYTES_CAP];
-        loop {
-            let bytes_read = (&self.stream).read(&mut rx_bytes)?;
-            buffer.extend_from_slice(&rx_bytes[..bytes_read]);
-            if bytes_read < READ_BYTES_CAP {
-                break;
-            }
-        }
-
-        (&self.stream).flush()?;
-        Ok(buffer)
-    }
-
-    fn write(&self, buf: &[u8]) -> std::io::Result<()> {
-        (&self.stream).write_all(buf)?;
-        (&self.stream).flush()
-    }
+    stream.flush()?;
+    Ok(buffer)
 }
