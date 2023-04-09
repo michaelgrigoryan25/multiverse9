@@ -38,24 +38,24 @@ impl Settings {
     /// Creates a new settings struct for controlling an instance. The function
     /// will create a new directory in the filesystem for keeping the data for
     /// current instance.
-    pub fn new(mv_data: Option<String>) -> Result<Self, SettingsError> {
-        let mv_hash = crate::Hasher::hash(DEFAULT_INSTANCE_PREFIX);
-        let mv_name = format!("{}_{}", DEFAULT_INSTANCE_PREFIX, mv_hash);
-        let mv_data = mv_data.unwrap_or_else(|| String::from(DEFAULT_DATA_PATHNAME));
+    pub fn new(data: Option<String>) -> Result<Self, SettingsError> {
+        let hash = crate::Hasher::hash(DEFAULT_INSTANCE_PREFIX);
+        let name = format!("{}_{}", DEFAULT_INSTANCE_PREFIX, hash);
+        let data = data.unwrap_or_else(|| String::from(DEFAULT_DATA_PATHNAME));
 
-        std::fs::create_dir_all(&mv_data).map_err(SettingsError::IoError)?;
-        debug!("Created a data directory at {:?}", &mv_data);
+        std::fs::create_dir_all(&data).map_err(SettingsError::IoError)?;
+        debug!("Created a data directory at {:?}", &data);
 
         // Getting the absolute path to the data directory.
-        let mv_data = std::path::Path::new(&mv_data)
+        let data = std::path::Path::new(&data)
             .canonicalize()
             .map_err(SettingsError::IoError)?
             .display()
             .to_string();
 
         Ok(Self {
-            data: mv_data,
-            name: mv_name,
+            data,
+            name,
             nodes: vec![],
             open_metadata: true,
             open_interactions: true,

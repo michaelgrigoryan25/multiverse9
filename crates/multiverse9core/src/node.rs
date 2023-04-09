@@ -28,7 +28,7 @@ impl Node {
         for stream in listener.incoming() {
             let stream = stream?;
             let addr = stream.peer_addr()?;
-            let mv_node = self.clone();
+            let node = self.clone();
             // Spawning a separate thread for each incoming connection. Besides a thread,
             // there will also be an instance of [Handler], which will be the main function
             // the thread tcp executes.
