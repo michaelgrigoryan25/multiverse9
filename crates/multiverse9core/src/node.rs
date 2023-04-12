@@ -1,6 +1,7 @@
-use crate::settings::Settings;
 use log::*;
 use std::sync::Arc;
+
+use crate::settings::Settings;
 
 #[derive(Debug)]
 pub struct Node {
@@ -28,12 +29,13 @@ impl Node {
         for stream in listener.incoming() {
             let stream = stream?;
             let addr = stream.peer_addr()?;
-            let node = self.clone();
+            let mut node = Arc::clone(&self);
+
             // Spawning a separate thread for each incoming connection. Besides a thread,
             // there will also be an instance of [Handler], which will be the main function
             // the thread tcp executes.
             std::thread::spawn(move || {
-                if let Err(e) = Handler::new(stream).tcp() {
+                if let Err(e) = Handler::new(stream).tcp(&mut node) {
                     error!("Stream error from {}: {}", addr, e);
                 }
             });
