@@ -7,17 +7,13 @@ use std::io::prelude::*;
 const DEFAULT_HOST_ADDRESS: &str = "127.0.0.1:0";
 /// Default instance name prefix.
 const DEFAULT_INSTANCE_PREFIX: &str = "multiverse9";
-/// Default settings file name.
-const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
-/// Default storage path.
-const DEFAULT_DATA_PATHNAME: &str = DEFAULT_INSTANCE_PREFIX;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     /// Human-readable identifier of current instance.
     pub name: String,
-    /// The path for storing information, such as posts and metadata.
-    pub data: String,
+    /// Redis connection string.
+    pub redis_uri: String,
     /// The version of current node.
     pub version: String,
     /// Internal IP address of the node.
@@ -38,24 +34,20 @@ impl Settings {
     /// Creates a new settings struct for controlling an instance. The function
     /// will create a new directory in the filesystem for keeping the data for
     /// current instance.
-    pub fn new(data: Option<String>) -> Result<Self, SettingsError> {
+    pub fn new(redis_uri: String) -> Result<Self, SettingsError> {
+        redis::Client::open(redis_uri.clone()).map_err(|e| {
+            SettingsError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{:?}", e),
+            ))
+        })?;
+
         let hash = crate::Hasher::hash(DEFAULT_INSTANCE_PREFIX);
         let name = format!("{}_{}", DEFAULT_INSTANCE_PREFIX, hash);
-        let data = data.unwrap_or_else(|| String::from(DEFAULT_DATA_PATHNAME));
-
-        std::fs::create_dir_all(&data).map_err(SettingsError::IoError)?;
-        debug!("Created a data directory at {:?}", &data);
-
-        // Getting the absolute path to the data directory.
-        let data = std::path::Path::new(&data)
-            .canonicalize()
-            .map_err(SettingsError::IoError)?
-            .display()
-            .to_string();
 
         Ok(Self {
-            data,
             name,
+            redis_uri,
             nodes: vec![],
             open_metadata: true,
             open_interactions: true,
@@ -64,30 +56,8 @@ impl Settings {
         })
     }
 
-    /// Generates a settings file from the provided [Settings] struct and
-    /// persists it in the filesystem at the path provided when initiating
-    /// the struct.
-    pub fn persist(&self) -> Result<(), SettingsError> {
-        std::fs::create_dir_all(&self.data).map_err(SettingsError::IoError)?;
-        debug!("Created a data directory at {:?}", &self.data);
-
-        let mut settings = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .append(false)
-            .open(format!("{}/{}", self.data, DEFAULT_SETTINGS_FILENAME))
-            .map_err(SettingsError::IoError)?;
-
-        settings
-            .write_all(
-                serde_json::to_string_pretty(&self)
-                    .map_err(SettingsError::ConversionError)?
-                    .as_bytes(),
-            )
-            .map_err(SettingsError::IoError)?;
-
-        Ok(())
+    pub unsafe fn to_string(&self) -> String {
+        serde_json::to_string_pretty(&self).unwrap_unchecked()
     }
 }
 
@@ -98,6 +68,20 @@ pub enum SettingsError {
     IoError(std::io::Error),
     ParseError(serde_json::Error),
     ConversionError(serde_json::Error),
+}
+
+impl std::fmt::Display for SettingsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SettingsError::IoError(e) => e.to_string(),
+                SettingsError::ParseError(e) => e.to_string(),
+                SettingsError::ConversionError(e) => e.to_string(),
+            }
+        )
+    }
 }
 
 impl TryFrom<std::path::PathBuf> for Settings {

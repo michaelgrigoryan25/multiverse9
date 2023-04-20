@@ -17,3 +17,13 @@ impl Hasher {
         format!("{:p}", std::ptr::addr_of!(raw))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Hasher;
+
+    #[test]
+    fn test_hasher_hash() {
+        assert_ne!(Hasher::hash("12345"), Hasher::hash("12345"))
+    }
+}

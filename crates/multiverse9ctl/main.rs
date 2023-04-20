@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use log::error;
 use multiverse9core::prelude::*;
 
 #[derive(Parser, Debug)]
@@ -22,29 +23,37 @@ struct Args {
 enum Action {
     /// One-time setup and configuration generation
     Setup {
-        #[arg(short, long)]
-        path: Option<String>,
+        #[arg(long)]
+        redis_uri: String,
     },
 
     /// Start a TcpListener and bind to `127.0.0.1:<port>`
     Run {
-        #[arg(short, long)]
+        #[arg(short)]
         settings: String,
     },
 }
 
 impl Action {
-    pub fn execute(&self) {
+    pub fn execute(self) {
         match self {
-            Self::Setup { path } => {
-                let settings = Settings::new(path.to_owned()).unwrap();
-                settings.persist().unwrap();
+            Self::Setup { redis_uri } => {
+                match Settings::new(redis_uri) {
+                    Ok(settings) => {
+                        // We are only printing the generated settings as a JSON file. It is the
+                        // responsibility of the server maintainer to decide the directory where
+                        // it is going to be stored.
+                        println!("{}", unsafe { settings.to_string() });
+                    }
+
+                    Err(e) => error!("{}", e),
+                }
             }
 
             Self::Run { settings } => {
-                let settings = std::path::PathBuf::from(format!("{}/settings.json", settings));
-                let settings = Settings::try_from(settings).expect("Could not read settings");
-                std::sync::Arc::new(Node::new(settings))
+                let path = std::path::PathBuf::from(settings);
+                let settings = Settings::try_from(path).expect("Could not read settings");
+                Node::new(settings)
                     .start()
                     .expect("Could not start the node");
             }
