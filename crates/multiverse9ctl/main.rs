@@ -31,6 +31,9 @@ enum Action {
     Run {
         #[arg(short)]
         settings: String,
+
+        #[arg(short, long)]
+        threads: Option<usize>,
     },
 }
 
@@ -43,18 +46,18 @@ impl Action {
                         // We are only printing the generated settings as a JSON file. It is the
                         // responsibility of the server maintainer to decide the directory where
                         // it is going to be stored.
-                        println!("{}", unsafe { settings.to_string() });
+                        println!("{}", settings.to_string());
                     }
 
                     Err(e) => error!("{}", e),
                 }
             }
 
-            Self::Run { settings } => {
+            Self::Run { settings, threads } => {
                 let path = std::path::PathBuf::from(settings);
                 let settings = Settings::try_from(path).expect("Could not read settings");
                 Node::new(settings)
-                    .start()
+                    .start(threads)
                     .expect("Could not start the node");
             }
         }

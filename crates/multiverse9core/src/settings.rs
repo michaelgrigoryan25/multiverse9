@@ -55,9 +55,11 @@ impl Settings {
             addr: DEFAULT_HOST_ADDRESS.parse().unwrap(),
         })
     }
+}
 
-    pub unsafe fn to_string(&self) -> String {
-        serde_json::to_string_pretty(&self).unwrap_unchecked()
+impl ToString for Settings {
+    fn to_string(&self) -> String {
+        serde_json::to_string_pretty(&self).unwrap()
     }
 }
 
