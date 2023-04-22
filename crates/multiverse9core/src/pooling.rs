@@ -61,8 +61,6 @@ impl Pool {
 
     pub fn execute<F: FnOnce() + Send + 'static>(&self, f: F) {
         let job = Box::new(f);
-        if let Some(tx) = &self.tx {
-            tx.send(job).unwrap();
-        }
+        self.tx.as_ref().unwrap().send(job).unwrap();
     }
 }
