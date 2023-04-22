@@ -232,6 +232,27 @@ mod api {
     }
 
     fn aggregate<T: io::Read + io::Write>(p: Packet<T>) -> HandlerResult {
-        unimplemented!()
+        let mut keys: Vec<Vec<u8>> = vec![];
+        let mut key: Vec<u8> = vec![];
+        for chunk in p.buffer.chunks(2) {
+            if chunk != &[0, 0] {
+                key.extend_from_slice(chunk);
+            } else {
+                keys.push(key.clone());
+                key.clear();
+            }
+        }
+
+        let buffer: Vec<String> = p.storage.mget(keys).map_err(HandlerError::RedisError)?;
+        Ok(buffer
+            .iter()
+            .map(|s| {
+                let mut bytes = vec![];
+                bytes.extend_from_slice(s.as_bytes());
+                bytes.extend_from_slice(&[00, 00]);
+                bytes
+            })
+            .flatten()
+            .collect())
     }
 }
