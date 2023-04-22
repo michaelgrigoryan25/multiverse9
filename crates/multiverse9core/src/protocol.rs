@@ -247,10 +247,9 @@ mod api {
         Ok(buffer
             .iter()
             .map(|s| {
-                let mut bytes = vec![];
-                bytes.extend_from_slice(s.as_bytes());
-                bytes.extend_from_slice(&[00, 00]);
-                bytes
+                let mut s = s.as_bytes().to_vec();
+                s.extend_from_slice(&[00, 00]);
+                s
             })
             .flatten()
             .collect())
