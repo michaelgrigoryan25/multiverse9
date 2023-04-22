@@ -7,13 +7,8 @@ use multiverse9core::prelude::*;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Enable verbose logging (ignores `RUST_LOG`)
     #[arg(short, long)]
     debug: bool,
-
-    /// Enable profiling output
-    // #[arg(short, long)]
-    // profile: bool,
 
     #[command(subcommand)]
     action: Action,
@@ -67,18 +62,9 @@ impl Action {
 fn main() -> ExitCode {
     let args = Args::parse();
     if let Err(e) = logger::setup(args.debug) {
-        eprintln!("error: logger failed to start. reason: {:?}", e);
+        eprintln!("Logger failed to start: {:?}", e);
         return ExitCode::FAILURE;
     }
-
-    // if args.profile {
-    //     std::thread::spawn(|| loop {
-    //         let guard = Some(pprof::ProfilerGuard::new(1000).unwrap());
-    //         let report = format!("{:?}", guard.unwrap().report().build().unwrap());
-    //         std::fs::write("__profiler_report", report).unwrap();
-    //         std::thread::sleep(std::time::Duration::from_secs(10));
-    //     });
-    // }
 
     args.action.execute();
     ExitCode::SUCCESS

@@ -3,13 +3,13 @@ use std::sync::{mpsc, Arc, Mutex};
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
-pub struct Worker {
+struct Worker {
     id: usize,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    pub fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
+    fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
         let thread = std::thread::spawn(move || loop {
             let rx = rx.lock().unwrap().recv();
             match rx {
