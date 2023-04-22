@@ -11,3 +11,4 @@ log = { workspace = true }
 redis = "0.23.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
+ulid = "1.0.0"

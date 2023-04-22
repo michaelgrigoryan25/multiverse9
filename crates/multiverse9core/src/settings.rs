@@ -42,7 +42,7 @@ impl Settings {
             ))
         })?;
 
-        let hash = crate::Hasher::hash(DEFAULT_INSTANCE_PREFIX);
+        let hash = ulid::Ulid::new().to_string();
         let name = format!("{}_{}", DEFAULT_INSTANCE_PREFIX, hash);
 
         Ok(Self {

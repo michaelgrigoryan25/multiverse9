@@ -4,7 +4,6 @@ use std::net::TcpStream;
 use std::sync::Arc;
 
 use crate::prelude::Node;
-use crate::Hasher;
 
 use self::api::CODE_LOOKUP_TABLE;
 
@@ -46,12 +45,10 @@ impl Handler {
     }
 
     pub(crate) fn tcp(&self, _node: Arc<Node>, mut redis: redis::Connection) -> io::Result<()> {
-        loop {
+        while self.inner.peer_addr().is_ok() {
             let buffer = Tcp::read(&self.inner)?;
             if buffer.is_empty() {
-                debug!("Request {} is empty. Ignoring...", Hasher::hash(&buffer));
                 continue;
-                // return Ok(());
             }
 
             // Separating request code (ID) and payload into a separate variable and buffer.
@@ -83,6 +80,8 @@ impl Handler {
                 None => api::unknown_command(packet)?,
             }
         }
+
+        Ok(())
     }
 }
 
@@ -165,7 +164,6 @@ mod tests {
 
 mod api {
     use super::{Packet, Tcp};
-    use crate::Hasher;
 
     use lazy_static::lazy_static;
     use redis::Commands;
@@ -177,13 +175,12 @@ mod api {
     #[derive(Debug)]
     pub enum HandlerError {
         RedisError(redis::RedisError),
-        PayloadError(String),
     }
 
     impl ToString for HandlerError {
         fn to_string(&self) -> String {
             match self {
-                HandlerError::PayloadError(e) => e.clone(),
+                // HandlerError::PayloadError(e) => e.clone(),
                 HandlerError::RedisError(e) => e.to_string(),
             }
         }
@@ -221,26 +218,20 @@ mod api {
     }
 
     fn create<T: io::Read + io::Write>(p: Packet<T>) -> HandlerResult {
-        let id = Hasher::hash(p.buffer);
+        let id = ulid::Ulid::new().to_string();
         p.storage
-            .set(&id, String::from_utf8_lossy(p.buffer).to_string())
+            .set(&id, p.buffer)
             .map_err(HandlerError::RedisError)?;
 
         Ok(id.as_bytes().to_vec())
     }
 
     fn remove<T: io::Read + io::Write>(p: Packet<T>) -> HandlerResult {
-        let parsed = String::from_utf8_lossy(p.buffer);
-        let chunks: Vec<&str> = parsed.split("\0\0").collect();
-        let id = chunks
-            .first()
-            .ok_or(HandlerError::PayloadError("ID is required".into()))?;
-
-        p.storage.del(id).map_err(HandlerError::RedisError)?;
+        p.storage.del(p.buffer).map_err(HandlerError::RedisError)?;
         Ok(Default::default())
     }
 
-    fn aggregate<T: io::Read + io::Write>(_p: Packet<T>) -> HandlerResult {
+    fn aggregate<T: io::Read + io::Write>(p: Packet<T>) -> HandlerResult {
         unimplemented!()
     }
 }
