@@ -44,7 +44,7 @@ impl Action {
                         println!("{}", settings.to_string());
                     }
 
-                    Err(e) => error!("{}", e),
+                    Err(e) => error!("{:?}", e),
                 }
             }
 

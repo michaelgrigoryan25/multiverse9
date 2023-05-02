@@ -36,7 +36,7 @@ impl Drop for Pool {
 
         for worker in &mut self.workers {
             if let Some(thread) = worker.thread.take() {
-                debug!("Shutting down worker {}", worker.id);
+                trace!("Stopping worker {}...", worker.id);
                 thread.join().unwrap();
             }
         }
@@ -50,6 +50,7 @@ impl Pool {
         let rx = Arc::new(Mutex::new(rx));
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
+            trace!("Starting worker {}...", id);
             workers.push(Worker::new(id, Arc::clone(&rx)));
         }
 

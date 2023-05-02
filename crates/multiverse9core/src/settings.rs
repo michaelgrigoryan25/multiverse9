@@ -34,13 +34,8 @@ impl Settings {
     /// Creates a new settings struct for controlling an instance. The function
     /// will create a new directory in the filesystem for keeping the data for
     /// current instance.
-    pub fn new(redis_uri: String) -> Result<Self, SettingsError> {
-        redis::Client::open(redis_uri.clone()).map_err(|e| {
-            SettingsError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("{:?}", e),
-            ))
-        })?;
+    pub fn new(redis_uri: String) -> Result<Self, Error> {
+        redis::Client::open(redis_uri.clone()).map_err(Error::RedisError)?;
 
         let hash = ulid::Ulid::new().to_string();
         let name = format!("{}_{}", DEFAULT_INSTANCE_PREFIX, hash);
@@ -63,41 +58,26 @@ impl ToString for Settings {
     }
 }
 
-/// Error enum for dealing with issues related to [Settings] parsing, initialization, and
-/// conversion.
 #[derive(Debug)]
-pub enum SettingsError {
+pub enum Error {
     IoError(std::io::Error),
     ParseError(serde_json::Error),
+    RedisError(redis::RedisError),
     ConversionError(serde_json::Error),
 }
 
-impl std::fmt::Display for SettingsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                SettingsError::IoError(e) => e.to_string(),
-                SettingsError::ParseError(e) => e.to_string(),
-                SettingsError::ConversionError(e) => e.to_string(),
-            }
-        )
-    }
-}
-
 impl TryFrom<std::path::PathBuf> for Settings {
-    type Error = SettingsError;
+    type Error = Error;
 
     fn try_from(path: std::path::PathBuf) -> Result<Self, Self::Error> {
-        let mut settings = std::fs::File::open(&path).map_err(SettingsError::IoError)?;
+        let mut settings = std::fs::File::open(&path).map_err(Error::IoError)?;
         let mut contents = String::new();
         settings
             .read_to_string(&mut contents)
-            .map_err(SettingsError::IoError)?;
+            .map_err(Error::IoError)?;
         // The contents of the settings file will be kept in memory until the program ends running.
         let contents: &'static str = Box::leak(contents.into_boxed_str());
-        let settings = serde_json::from_str(contents).map_err(SettingsError::ParseError);
+        let settings = serde_json::from_str(contents).map_err(Error::ParseError);
         debug!("Settings from {:?} have been loaded successfully", &path);
         settings
     }

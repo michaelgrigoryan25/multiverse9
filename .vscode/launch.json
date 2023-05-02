@@ -4,7 +4,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'multiverse9ctl'",
+      "name": "Debug executable 'multiverse9ctl' (Node#1)",
       "cargo": {
         "args": ["build", "--bin=multiverse9ctl", "--package=multiverse9ctl"],
         "filter": {
@@ -12,7 +12,21 @@
           "kind": "bin"
         }
       },
-      "args": ["-d", "run", "-s", "settings.json"],
+      "args": ["-d", "run", "-s", "settings-1.json"],
+      "cwd": "${cwd}/instances"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'multiverse9ctl' (Node#2)",
+      "cargo": {
+        "args": ["build", "--bin=multiverse9ctl", "--package=multiverse9ctl"],
+        "filter": {
+          "name": "multiverse9ctl",
+          "kind": "bin"
+        }
+      },
+      "args": ["-d", "run", "-s", "settings-2.json"],
       "cwd": "${cwd}/instances"
     }
   ]
