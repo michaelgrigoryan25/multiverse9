@@ -1,6 +1,6 @@
 use log::*;
 use std::net::TcpListener;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::pooling;
 use crate::protocol::Handler;
@@ -24,14 +24,18 @@ impl Node {
     /// threads. The threads, as of right now do not have the option of changing the settings
     /// internally.
     pub fn start(self, threads: Option<usize>) -> std::io::Result<()> {
-        let node = Arc::new(self);
+        let node = Arc::new(Mutex::new(self));
         let pool = pooling::Pool::new(threads.unwrap_or(14) - 1);
-        let listener = TcpListener::bind(node.settings.addr)?;
+        let listener = TcpListener::bind(node.lock().unwrap().settings.addr)?;
         info!("TcpListener bound at {}", listener.local_addr()?);
 
         let redis = Arc::new(
-            redis::Client::open(node.settings.redis_uri.clone())
+            redis::Client::open(node.lock().unwrap().settings.redis_uri.clone())
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?,
+        );
+        info!(
+            "Redis connected at {}",
+            node.lock().unwrap().settings.redis_uri
         );
 
         for stream in listener.incoming() {
