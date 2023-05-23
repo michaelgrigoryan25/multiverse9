@@ -6,52 +6,6 @@ use std::io;
 
 /// This module contains private helper functions used within [api](crate::api).
 mod internal {
-    /// Extracts the key and optional address from the target vector.
-    ///
-    /// # Arguments
-    ///
-    /// * `$target` - The target vector to extract the key and address from.
-    /// * `$some` - The expression to evaluate if an address is present. Receives the address and key.
-    /// * `$none` - The expression to evaluate if no address is present. Receives just the key.
-    ///
-    /// # Functionality
-    ///
-    /// This macro attempts to split the target vector on `@` characters, extracting the key
-    /// (required) and optional address. If an address is present, `$some` is evaluated with the
-    /// address and key. If no address is present, `$none` is evaluated with just the key.
-    macro_rules! target_extract_data {
-        (
-            $target:ident,
-            $some:expr,
-            $none:expr,
-        ) => {
-            if $target.is_empty() {
-                dbg!($target);
-                panic!("`internal::buf_extract_keys` contains a bug. It should not append empty vectors to the result");
-            }
-
-            let target: Vec<&[u8]> = $target.split(|c: &u8| *c == b'@').collect();
-            // The key is required, however, the address of the key is not, since the
-            // default instance where the key is going to be looked for is the current
-            // node.
-            let key: String = String::from_utf8_lossy(target.first().unwrap()).to_string();
-            if key.len() != ulid::ULID_LEN {
-                return Err(Error::InvalidKey(key));
-            }
-
-            // Attempts to extract the address of the key and convert it to a String.
-            match target
-                .get(1)
-                .map(|chunks| String::from_utf8_lossy(chunks).to_string())
-            {
-                Some(addr) => $some(addr, key),
-                None => $none(key),
-            }?
-        };
-    }
-
-    pub(crate) use target_extract_data;
-
     /// Extracts target keys from the provided buffer.
     ///
     /// # Arguments
@@ -142,7 +96,7 @@ pub const CODE_LOOKUP_TABLE: phf::Map<u8, HandlerOutputCodes> = phf::phf_map! {
     0x0003u8 => (0, 1),
 };
 
-/// Compile-time length equality verification for the lookup tables.
+/// Compile-time length equality assertion for the lookup tables.
 const _: () = assert!(CODE_LOOKUP_TABLE.len() == HANDLER_LOOKUP_TABLE.len());
 
 fn create(p: Packet) -> HandlerResult {
@@ -179,8 +133,26 @@ fn aggregate(p: Packet) -> HandlerResult {
 
     let mut aggregated: Vec<u8> = vec![];
     for target in targets {
-        internal::target_extract_data! { target,
-            |addr: String, key: String| -> Result<(), Error> {
+        if target.is_empty() {
+            dbg!(target);
+            panic!("`internal::buf_extract_keys` contains a bug. Cannot append empty vectors to `aggregated`.");
+        }
+
+        let target: Vec<&[u8]> = target.split(|c: &u8| *c == b'@').collect();
+        // The key is required, however, the address of the key is not, since the
+        // default instance where the key is going to be looked for is the current
+        // node.
+        let key: String = String::from_utf8_lossy(target.first().unwrap()).to_string();
+        if key.len() != ulid::ULID_LEN {
+            return Err(Error::InvalidKey(key));
+        }
+
+        // Attempts to extract the address of the key and convert it to a String.
+        match target
+            .get(1)
+            .map(|chunks| String::from_utf8_lossy(chunks).to_string())
+        {
+            Some(addr) => {
                 // If the key came with an address, then we are going to make an external
                 // request to the remote node via the SDK and push the aggregated resposne
                 // bytes to the reply.
@@ -192,9 +164,8 @@ fn aggregate(p: Packet) -> HandlerResult {
                 // registered under one address. This is used to send bulk read requests
                 // instead of separate smaller requests. This would also require sdk::aggregate
                 // to be changed accordingly.
-            },
-
-            |key: String| -> Result<(), Error> {
+            }
+            None => {
                 let buffer: Option<Vec<u8>> = p.storage.get(&key).map_err(Error::Redis)?;
                 let buffer = buffer.unwrap_or(b"Unknown key".to_vec());
                 aggregated.extend(key.as_bytes());
@@ -202,8 +173,8 @@ fn aggregate(p: Packet) -> HandlerResult {
                 aggregated.extend(buffer);
                 aggregated.push(00);
                 Ok(())
-            },
-        }
+            }
+        }?;
     }
 
     Ok(aggregated)

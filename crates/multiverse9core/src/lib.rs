@@ -122,10 +122,12 @@ impl Tcp {
 /// ```
 macro_rules! enum_with_impl_to_string {
     (
+        $(#[doc = $doc:expr])*
         $visibility:vis $enum_name:ident,
         $(.$variant_name:ident($variant_type:ty))*
         $(~$derive_name:ident)*
     ) => {
+        $(#[doc = $doc])*
         #[derive($($derive_name),*)]
         $visibility enum $enum_name {
             $($variant_name($variant_type)),*
